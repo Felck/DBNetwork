@@ -14,9 +14,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -rdynamic")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Set DEBUG flag on debug configuration builds
-add_compile_options("$<$<CONFIG:DEBUG>:-DDEBUG>")
-
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------

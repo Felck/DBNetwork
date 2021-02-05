@@ -1,19 +1,21 @@
 #pragma once
+#include <sys/epoll.h>
 
 inline constexpr int LINE_SIZE = 100;
 inline constexpr int LISTEN_QUEUE_SIZE = 20;
 inline constexpr int EVENTS_MAX = 20;
-inline constexpr int WAIT_TIMEOUT = 500;  // in ms, -1 means no timeout
 
 class Server
 {
  public:
-  void run();
+  void init(uint16_t port);
+  void run(bool edge_triggered);
 
  private:
+  bool edge_triggered;
   int epfd;
   int listenfd;
-  void init();
   void setNonBlocking(int socket);
-  void readFromSocket(int socket);
+  void handleET(int fd);
+  void handleLT(int fd);
 };
