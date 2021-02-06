@@ -8,7 +8,6 @@
 #include <cstring>
 #include <iostream>
 
-#include "Config.hpp"
 #include "NetQuery.hpp"
 
 void Server::run(bool edge_triggered)

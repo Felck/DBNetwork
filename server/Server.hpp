@@ -1,5 +1,5 @@
 #pragma once
-#include <sys/epoll.h>
+#include <cstdint>
 
 inline constexpr int LINE_SIZE = 100;
 inline constexpr int LISTEN_QUEUE_SIZE = 20;

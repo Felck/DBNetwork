@@ -10,8 +10,6 @@
 #include <string>
 #include <thread>
 
-#include "Config.hpp"
-
 constexpr auto USE_POISSON = false;
 constexpr auto POISSON_LAMBDA = 3.5;
 constexpr auto SETUP_TIME = 10;

@@ -26,12 +26,13 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 # ---------------------------------------------------------------------------
 
 include_directories(
-        ${CMAKE_SOURCE_DIR}/config
+        ${CMAKE_SOURCE_DIR}/shared/Net
 )
 
 # ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
 
+add_subdirectory("shared")
 add_subdirectory("client")
 add_subdirectory("server")
