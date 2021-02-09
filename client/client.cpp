@@ -10,6 +10,8 @@
 #include <string>
 #include <thread>
 
+#include "PacketProtocol.hpp"
+
 constexpr auto USE_POISSON = false;
 constexpr auto POISSON_LAMBDA = 3.5;
 constexpr auto SETUP_TIME = 10;
@@ -38,11 +40,29 @@ std::vector<int> openDeadConnections(int n, const char* server_addr, uint16_t po
   return sockets;
 }
 
+void msgHandler(int fd, std::vector<uint8_t>& data)
+{
+  //std::cout << "recv(" << fd << "): " << std::string(data.begin(), data.end()) << "\n";
+  // send random number
+  std::string s = std::to_string(rand());
+  auto msg = Net::wrapMessage(reinterpret_cast<const uint8_t*>(s.c_str()), s.length());
+  size_t written = 0;
+  size_t n;
+  while (written != msg.size()) {
+    if ((n = write(fd, &msg[0] + written, msg.size() - written)) < 0) {
+      perror("write()");
+      exit(EXIT_FAILURE);
+    } else {
+      written += n;
+    }
+  }
+}
+
 void runThread(const std::atomic<bool>& keep_running,
                const std::atomic<bool>& count_events,
                std::atomic<uint64_t>& ev_count,
                const char* server_addr,
-               uint16_t port)
+               const uint16_t port)
 {
   // init socket
   struct sockaddr_in address;
@@ -57,32 +77,39 @@ void runThread(const std::atomic<bool>& keep_running,
     exit(EXIT_FAILURE);
   }
 
-  char buf[100];
+  uint8_t buf[100];
   uint64_t local_ev_count = 0;
   std::default_random_engine generator;
   std::exponential_distribution<double> distribution(POISSON_LAMBDA);
-
-  while (keep_running) {
-    int i = rand();
-    std::string s = std::to_string(i);
-    // send random number
-    write(sockfd, s.c_str(), s.length() + 1);
-    // wait for data and read in
-    read(sockfd, buf, sizeof(buf));
-    // check response
-    if (s.compare(buf) != 0) {
-      std::cerr << "Received wrong response! (" << s << "/" << buf << ")" << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
+  Net::PacketProtocol packetFrame([&](auto& data) {
     if (count_events)
       local_ev_count++;
 
     if (USE_POISSON) {
       // wait for an exponential distributed amount of time (poisson process)
-      i = 1000 * distribution(generator);
+      int i = 1000 * distribution(generator);
       std::this_thread::sleep_for(std::chrono::milliseconds(i));
     }
+
+    msgHandler(sockfd, data);
+  });
+
+  // first message
+  buf[0] = 0;
+  auto msg = Net::wrapMessage(buf, 1);
+  if (write(sockfd, &msg[0], msg.size()) < 0) {
+    perror("write()");
+    exit(EXIT_FAILURE);
+  }
+
+  while (keep_running) {
+    // wait for data and read in
+    int n = read(sockfd, buf, sizeof(buf));
+    if (n < 0) {
+      perror("read()");
+      exit(EXIT_FAILURE);
+    }
+    packetFrame.receive(buf, n);
   }
 
   close(sockfd);
