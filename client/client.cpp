@@ -16,30 +16,6 @@ constexpr auto USE_POISSON = false;
 constexpr auto POISSON_LAMBDA = 3.5;
 constexpr auto SETUP_TIME = 10;
 
-std::vector<int> openDeadConnections(int n, const char* server_addr, uint16_t port)
-{
-  std::vector<int> sockets;
-  sockets.reserve(n);
-  int sockfd;
-  struct sockaddr_in address;
-  for (size_t i = 0; i < n; i++) {
-    // init socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    memset(&address, 0, sizeof(address));
-    address.sin_family = AF_INET;
-    inet_aton(server_addr, &(address.sin_addr));
-    address.sin_port = htons(port);
-    // connect to server
-    if (connect(sockfd, (struct sockaddr*)&address, sizeof(address)) == -1) {
-      perror("connect()");
-      std::cout << sockfd << " " << errno << std::endl;
-      exit(EXIT_FAILURE);
-    }
-    sockets.push_back(sockfd);
-  }
-  return sockets;
-}
-
 void msgHandler(int fd, std::vector<uint8_t>& data)
 {
   //std::cout << "recv(" << fd << "): " << std::string(data.begin(), data.end()) << "\n";
@@ -118,8 +94,8 @@ void runThread(const std::atomic<bool>& keep_running,
 
 int main(int argc, char* argv[])
 {
-  if (argc != 6) {
-    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <number of dead connections> <testing time in s>" << std::endl;
+  if (argc != 5) {
+    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <testing time in s>" << std::endl;
     return 1;
   }
 
@@ -131,15 +107,12 @@ int main(int argc, char* argv[])
 
   try {
     thread_count = std::stoi(argv[3]);
-    dead_conns = std::stoi(argv[4]);
-    run_seconds = std::stoi(argv[5]);
+    run_seconds = std::stoi(argv[4]);
   } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';
-    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <number of dead connections> <testing time in s>" << std::endl;
+    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <testing time in s>" << std::endl;
     return 1;
   }
-
-  auto dead_conn_sockets = openDeadConnections(dead_conns, server_addr, port);
 
   // start threads
   std::atomic<bool> keep_running{true};
@@ -164,10 +137,6 @@ int main(int argc, char* argv[])
   std::cout << event_count << " events in " << run_seconds << "s\n"
             << (event_count * 1.0) / run_seconds << " events per second\n"
             << (run_seconds * 1000.0) / event_count << " ms per event" << std::endl;
-
-  // close dead connection sockets
-  for (auto socket : dead_conn_sockets)
-    close(socket);
 
   return 0;
 }
