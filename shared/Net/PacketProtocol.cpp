@@ -2,7 +2,7 @@
 
 namespace Net
 {
-std::vector<uint8_t> wrapMessage(const uint8_t* message, size_t length)
+std::vector<uint8_t> wrapMessage(const uint8_t* message, const size_t length)
 {
   std::vector<uint8_t> packet;
   // insert length prefix
