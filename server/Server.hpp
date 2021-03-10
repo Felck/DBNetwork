@@ -1,4 +1,7 @@
 #pragma once
+#include <sys/epoll.h>
+
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -11,21 +14,31 @@ inline constexpr int EVENTS_MAX = 20;
 class Server
 {
  public:
+  Server();
+  ~Server();
   void init(uint16_t port);
-  void run();
+  void run(int threadCount);
 
  private:
-  struct MessageHandler {
+  struct Connection {
+    struct MessageHandler {
+      Connection& connection;
+      void operator()(std::vector<uint8_t>& data) const;
+    };
+
+    Connection(int fd);
+
     int fd;
-    std::unordered_map<int, std::vector<uint8_t>>& writeTasks;
-    void operator()(std::vector<uint8_t>& data) const;
+    uint32_t epollEvents = EPOLLIN | EPOLLET | EPOLLONESHOT;
+    Net::PacketProtocol<MessageHandler> packetizer;
+    std::vector<uint8_t> outBuffer;
   };
 
- private:
-  bool edge_triggered;
   int epfd;
   int listenfd;
-  std::unordered_map<int, Net::PacketProtocol<MessageHandler>> connections;
-  std::unordered_map<int, std::vector<uint8_t>> writeTasks;
+  std::vector<std::thread> threads;
+  pthread_rwlock_t connLatch;
+  std::unordered_map<int, Connection> connections;
   void setNonBlocking(int socket);
+  void closeConnection(int fd);
 };
