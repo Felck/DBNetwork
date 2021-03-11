@@ -13,7 +13,6 @@ Server::Connection::Connection(int fd) : fd(fd), packetizer(MessageHandler{*this
 
 void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) const
 {
-  // std::cout << "recv(" << fd << "): " << std::string(data.begin(), data.end()) << "\n";
   // write back msg
   auto msg = Net::wrapMessage(&data[0], data.size());
 
@@ -41,19 +40,19 @@ Server::~Server()
   pthread_rwlock_destroy(&connLatch);
 }
 
-void Server::run(int threadCount)
+void Server::run(int threadCount, size_t lineSize)
 {
   for (int t_i = 0; t_i < threadCount; t_i++) {
-    threads.emplace_back([this]() {
+    threads.emplace_back([&]() {
       // main loop
-      struct epoll_event ev, events[EVENTS_MAX];
+      struct epoll_event ev, events[1];
       Connection* connection;
       bool rearmSocket = false;
 
       for (;;) {
         // wait for epoll events
         int nfds;
-        if ((nfds = epoll_wait(epfd, events, EVENTS_MAX, -1)) == -1) {
+        if ((nfds = epoll_wait(epfd, events, 1, -1)) == -1) {
           perror("epoll_wait()");
           exit(EXIT_FAILURE);
         }
@@ -99,9 +98,9 @@ void Server::run(int threadCount)
             pthread_rwlock_unlock(&connLatch);
 
             // read all data from socket until EAGAIN
-            char line[LINE_SIZE];
+            char line[lineSize];
             for (;;) {
-              ssize_t n = read(ev.data.fd, line, LINE_SIZE);
+              ssize_t n = read(ev.data.fd, line, lineSize);
               if (n == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
                   // all data read

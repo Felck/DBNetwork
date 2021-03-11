@@ -7,9 +7,7 @@
 
 #include "PacketProtocol.hpp"
 
-inline constexpr int LINE_SIZE = 100;
 inline constexpr int LISTEN_QUEUE_SIZE = 20;
-inline constexpr int EVENTS_MAX = 20;
 
 class Server
 {
@@ -17,7 +15,7 @@ class Server
   Server();
   ~Server();
   void init(uint16_t port);
-  void run(int threadCount);
+  void run(int threadCount, size_t lineSize);
 
  private:
   struct Connection {
