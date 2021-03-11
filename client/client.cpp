@@ -20,20 +20,18 @@ struct ThreadData {
   std::atomic<bool> keep_running{true};
   std::atomic<bool> count_events{false};
   std::atomic<uint64_t> event_count{0};
+  std::vector<uint8_t>* message;
   char* server_addr;
   uint16_t port;
 };
 
-void msgHandler(int fd, std::vector<uint8_t>& data)
+void writeMessage(int fd, std::vector<uint8_t>& msg)
 {
-  // std::cout << "recv(" << fd << "): " << std::string(data.begin(), data.end()) << "\n";
-  // send random number
-  std::string s = std::to_string(rand());
-  auto msg = Net::wrapMessage(reinterpret_cast<const uint8_t*>(s.c_str()), s.length());
+  auto packet = Net::wrapMessage(msg.data(), msg.size());
   size_t written = 0;
   size_t n;
-  while (written != msg.size()) {
-    if ((n = write(fd, &msg[0] + written, msg.size() - written)) < 0) {
+  while (written != packet.size()) {
+    if ((n = write(fd, &packet[0] + written, packet.size() - written)) < 0) {
       perror("write()");
       exit(EXIT_FAILURE);
     } else {
@@ -73,16 +71,11 @@ void runThread(ThreadData& thread_data)
       std::this_thread::sleep_for(std::chrono::milliseconds(i));
     }
 
-    msgHandler(sockfd, data);
+    writeMessage(sockfd, *thread_data.message);
   });
 
   // first message
-  buf[0] = 0;
-  auto msg = Net::wrapMessage(buf, 1);
-  if (write(sockfd, &msg[0], msg.size()) < 0) {
-    perror("write()");
-    exit(EXIT_FAILURE);
-  }
+  writeMessage(sockfd, *thread_data.message);
 
   // main loop
   while (thread_data.keep_running) {
@@ -101,24 +94,26 @@ void runThread(ThreadData& thread_data)
 
 int main(int argc, char* argv[])
 {
-  if (argc != 5) {
-    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <testing time in s>" << std::endl;
+  if (argc != 6) {
+    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <testing time in s> <packet size in byte>" << std::endl;
     return 1;
   }
 
   ThreadData thread_data;
-  thread_data.server_addr = argv[1];
-  thread_data.port = std::stoi(argv[2]);
-
   uint thread_count;
   uint run_seconds;
+  std::vector<uint8_t> message;
 
   try {
+    thread_data.server_addr = argv[1];
+    thread_data.port = std::stoi(argv[2]);
     thread_count = std::stoi(argv[3]);
     run_seconds = std::stoi(argv[4]);
+    message.insert(message.begin(), std::stoi(argv[5]), 'a');
+    thread_data.message = &message;
   } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';
-    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <testing time in s>" << std::endl;
+    std::cout << "Usage: " << argv[0] << " <ip address> <port> <number of threads> <testing time in s> <packet size in byte>" << std::endl;
     return 1;
   }
 
