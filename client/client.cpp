@@ -55,41 +55,50 @@ void runThread(ThreadData& thread_data)
     exit(EXIT_FAILURE);
   }
 
-  uint8_t buf[100];
-  uint64_t local_ev_count = 0;
   std::default_random_engine generator;
   std::exponential_distribution<double> distribution(POISSON_LAMBDA);
 
-  Net::PacketProtocol packetizer([&](auto& data) {
-    // count events
-    if (thread_data.count_events)
-      local_ev_count++;
+  std::thread reading_thread([&]() {
+    uint8_t buf[std::max(thread_data.message->size() + 8, 8192ul)];  // at least 8kb read buffer
+    uint64_t local_ev_count = 0;
+
+    Net::PacketProtocol packetizer([&](auto& data) {
+      // count events
+      if (thread_data.count_events)
+        local_ev_count++;
+    });
+
+    while (thread_data.keep_running) {
+      // wait for data and read in
+      int n = recv(sockfd, buf, sizeof(buf), MSG_DONTWAIT);
+      if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        } else {
+          perror("read()");
+          exit(EXIT_FAILURE);
+        }
+      } else {
+        packetizer.receive(buf, n);
+      }
+    }
+
+    thread_data.event_count += local_ev_count;
+  });
+
+  // main loop
+  while (thread_data.keep_running) {
+    writeMessage(sockfd, *thread_data.message);
 
     // wait for an exponential distributed amount of time (poisson process)
     if (USE_POISSON) {
       int i = 1000 * distribution(generator);
       std::this_thread::sleep_for(std::chrono::milliseconds(i));
     }
-
-    writeMessage(sockfd, *thread_data.message);
-  });
-
-  // first message
-  writeMessage(sockfd, *thread_data.message);
-
-  // main loop
-  while (thread_data.keep_running) {
-    // wait for data and read in
-    int n = read(sockfd, buf, sizeof(buf));
-    if (n < 0) {
-      perror("read()");
-      exit(EXIT_FAILURE);
-    }
-    packetizer.receive(buf, n);
   }
 
+  reading_thread.join();
   close(sockfd);
-  thread_data.event_count += local_ev_count;
 }
 
 int main(int argc, char* argv[])
@@ -134,9 +143,9 @@ int main(int argc, char* argv[])
     thread.join();
   }
 
-  std::cout << thread_data.event_count << " events in " << run_seconds << "s\n"
-            << (thread_data.event_count * 1.0) / run_seconds << " events per second\n"
-            << (run_seconds * 1000.0) / thread_data.event_count << " ms per event" << std::endl;
+  std::cout << "events\tseconds\tevents/s\tms/event\n"
+            << thread_data.event_count << "\t" << run_seconds << "\t" << (thread_data.event_count * 1.0) / run_seconds << "\t"
+            << (run_seconds * 1000.0) / thread_data.event_count << "\t" << std::endl;
 
   return 0;
 }
