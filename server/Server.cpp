@@ -115,6 +115,7 @@ void Server::run(int threadCount, size_t lineSize)
                   // complete message has been sent
                   buf.clear();
                   connection->epollEvents &= ~EPOLLOUT;
+                  break;
                 }
               }
             }
