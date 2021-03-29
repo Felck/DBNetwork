@@ -8,8 +8,7 @@
 #include <iostream>
 #include <string>
 
-Server::Connection::Connection(int fd) : fd(fd), packetizer(MessageHandler{*this}) {
-}
+Server::Connection::Connection(int fd) : fd(fd), packetizer(MessageHandler{*this}) {}
 
 void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) const
 {
@@ -17,7 +16,9 @@ void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) 
   auto msg = Net::wrapMessage(&data[0], data.size());
 
   if (connection.outBuffer.empty()) {
-    auto n = write(connection.fd, &msg[0], msg.size());
+    auto n = send(connection.fd, &msg[0], msg.size(), MSG_NOSIGNAL);
+    // TODO: handle errors
+
     if (n != msg.size()) {
       // buffer remaining part of msg
       auto& buf = connection.outBuffer;
@@ -47,7 +48,6 @@ void Server::run(int threadCount, size_t lineSize)
       // main loop
       struct epoll_event ev, events[1];
       Connection* connection;
-      bool rearmSocket = false;
 
       for (;;) {
         // wait for epoll events
@@ -73,8 +73,6 @@ void Server::run(int threadCount, size_t lineSize)
               exit(EXIT_FAILURE);
             }
 
-            // std::cout << "Accepting a connection (" << connfd << ") from " << inet_ntoa(clientaddr.sin_addr) << "\n";
-
             // add connection to hashtable and epoll
             pthread_rwlock_wrlock(&connLatch);
             connections.try_emplace(connfd, connfd);
@@ -88,78 +86,82 @@ void Server::run(int threadCount, size_t lineSize)
               exit(EXIT_FAILURE);
             }
           } else if ((ev.events & EPOLLERR) || (ev.events & EPOLLHUP)) {
-            // error
-            perror("Closing connection");
+            // client closed connection
             closeConnection(ev.data.fd);
-            continue;
-          } else if (ev.events & EPOLLIN) {
-            pthread_rwlock_rdlock(&connLatch);
-            connection = &connections.at(ev.data.fd);
-            pthread_rwlock_unlock(&connLatch);
+          } else {
+            if (ev.events & EPOLLOUT) {
+              // write from outBuffer
+              pthread_rwlock_rdlock(&connLatch);
+              connection = &connections.at(ev.data.fd);
+              pthread_rwlock_unlock(&connLatch);
+              auto& buf = connection->outBuffer;
 
-            // read all data from socket until EAGAIN
-            char line[lineSize];
-            for (;;) {
-              ssize_t n = read(ev.data.fd, line, lineSize);
-              if (n == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                  // all data read
-                  rearmSocket = true;
-                } else if (errno == ECONNRESET) {
-                  // client closed connection
-                  // std::cout << "Client (" << ev.data.fd << ") closed connection.\n";
-                  closeConnection(ev.data.fd);
-                  // continue with the event loop
-                  goto continue_outer;
+              for (;;) {
+                auto n = send(ev.data.fd, &buf[0], buf.size(), MSG_NOSIGNAL);
+                if (n == -1) {
+                  if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // socket buffer full
+                    break;
+                  } else if (errno == ECONNRESET) {
+                    // client closed connection
+                    closeConnection(ev.data.fd);
+                    goto continue_event_loop;
+                  }
+                } else if (n != buf.size()) {
+                  // there's still some of the message left
+                  buf.erase(buf.begin(), buf.begin() + n);
+                  connection->epollEvents |= EPOLLOUT;
                 } else {
-                  perror("read()");
-                  exit(EXIT_FAILURE);
+                  // complete message has been sent
+                  buf.clear();
+                  connection->epollEvents &= ~EPOLLOUT;
                 }
-                break;
-              } else if (n == 0) {
-                // client closed connection
-                // std::cout << "Client (" << ev.data.fd << ") closed connection.\n";
-                closeConnection(ev.data.fd);
-                // continue with the event loop
-                goto continue_outer;
-              } else {
-                // forward line to packet protocol handler
-                connection->packetizer.receive(reinterpret_cast<const uint8_t*>(line), n);
               }
             }
-          } else if (ev.events & EPOLLOUT) {
-            // lookup the sockets pending writeTask and continue with that
-            pthread_rwlock_rdlock(&connLatch);
-            connection = &connections.at(ev.data.fd);
-            pthread_rwlock_unlock(&connLatch);
-            auto& buf = connection->outBuffer;
 
-            auto n = write(ev.data.fd, &buf[0], buf.size());
-            if (n != buf.size()) {
-              // there's still some of the message left
-              buf.erase(buf.begin(), buf.begin() + n);
-              connection->epollEvents |= EPOLLOUT;
-            } else {
-              // complete message has been sent
-              buf.clear();
-              connection->epollEvents &= ~EPOLLOUT;
+            if (ev.events & EPOLLIN) {
+              pthread_rwlock_rdlock(&connLatch);
+              connection = &connections.at(ev.data.fd);
+              pthread_rwlock_unlock(&connLatch);
+
+              // read all data from socket until EAGAIN
+              char line[lineSize];
+              for (;;) {
+                ssize_t n = read(ev.data.fd, line, lineSize);
+                if (n == -1) {
+                  if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // all data read
+                    break;
+                  } else if (errno == ECONNRESET) {
+                    // client closed connection
+                    closeConnection(ev.data.fd);
+                    // continue with the event loop
+                    goto continue_event_loop;
+                  } else {
+                    perror("read()");
+                    exit(EXIT_FAILURE);
+                  }
+                } else if (n == 0) {
+                  // client closed connection
+                  closeConnection(ev.data.fd);
+                  // continue with the event loop
+                  goto continue_event_loop;
+                } else {
+                  // forward line to packet protocol handler
+                  connection->packetizer.receive(reinterpret_cast<const uint8_t*>(line), n);
+                }
+              }
             }
-            // rearm socket
-            rearmSocket = true;
-          } else {
-            std::cout << ev.events << std::endl;
-            perror("unhandled epoll event");
-          }
 
-          if (rearmSocket) {
-            rearmSocket = false;
+            // rearm socket
             ev.events = connection->epollEvents;
             if (epoll_ctl(epfd, EPOLL_CTL_MOD, ev.data.fd, &ev) == -1) {
               perror("epoll_ctl()");
               exit(EXIT_FAILURE);
             }
           }
-        continue_outer:;
+
+        continue_event_loop:;
         }
       }
     });
