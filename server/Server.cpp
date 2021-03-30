@@ -106,6 +106,9 @@ void Server::run(int threadCount, size_t lineSize)
                     // client closed connection
                     closeConnection(ev.data.fd);
                     goto continue_event_loop;
+                  } else {
+                    perror("send()");
+                    exit(EXIT_FAILURE);
                   }
                 } else if (n != buf.size()) {
                   // there's still some of the message left
