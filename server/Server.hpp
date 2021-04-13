@@ -1,6 +1,7 @@
 #pragma once
 #include <sys/epoll.h>
 
+#include <atomic>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -37,6 +38,9 @@ class Server
   std::vector<std::thread> threads;
   pthread_rwlock_t connLatch;
   std::unordered_map<int, Connection> connections;
+
+  static std::atomic<uint64_t> eventCounter;
+
   void setNonBlocking(int socket);
   void closeConnection(int fd);
 };

@@ -12,6 +12,11 @@ Server::Connection::Connection(int fd) : fd(fd), packetizer(MessageHandler{*this
 
 void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) const
 {
+  eventCounter++;
+}
+
+/*void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) const
+{
   // write back msg
   auto msg = Net::wrapMessage(&data[0], data.size());
 
@@ -29,7 +34,9 @@ void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) 
     // buffer msg
     connection.outBuffer.insert(connection.outBuffer.end(), msg.begin(), msg.end());
   }
-}
+}*/
+
+std::atomic<uint64_t> Server::eventCounter{0};
 
 Server::Server()
 {
@@ -170,8 +177,17 @@ void Server::run(int threadCount, size_t lineSize)
       }
     });
   }
-  // TODO
-  threads[0].join();
+
+  sleep(5000);
+
+  for (;;) {
+    auto startTime = std::chrono::high_resolution_clock::now();
+    eventCounter = 0;
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    uint64_t events = eventCounter;
+    std::chrono::duration<double, std::milli> mSec = std::chrono::high_resolution_clock::now() - startTime;
+    std::cout << events << " " << mSec.count() << " " << events*1000/mSec.count() << "\n";
+  }
 }
 
 // init epoll and listening socket
