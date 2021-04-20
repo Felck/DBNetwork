@@ -44,7 +44,7 @@ union TPCCFunctionParams {
     uint32_t w_id;
     uint32_t d_id;
     char c_last[16];
-    uint8_t strSize;
+    uint8_t strLength;
   } orderStatusName;
   struct PaymentById {
     uint64_t h_date;
@@ -65,7 +65,7 @@ union TPCCFunctionParams {
     uint32_t c_w_id;
     uint32_t c_d_id;
     char c_last[16];
-    uint8_t strSize;
+    uint8_t strLength;
   } paymentByName;
 };
 

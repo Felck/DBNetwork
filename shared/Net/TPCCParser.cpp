@@ -13,19 +13,8 @@ void TPCCParser::parse(const uint8_t* data, const size_t length)
   while (i != length) {
     switch (funcID) {
       case TPCCFunctionID::notSet:
-        // read function ID
+        // new paket: read function ID
         funcID = static_cast<TPCCFunctionID>(data[0]);
-        // zero char arrays
-        switch (funcID) {
-          case TPCCFunctionID::orderStatusName:
-            std::fill(&params.orderStatusName.c_last[0], &params.orderStatusName.c_last[16], 0);
-            break;
-          case TPCCFunctionID::paymentByName:
-            std::fill(&params.paymentByName.c_last[0], &params.paymentByName.c_last[16], 0);
-            break;
-          default:
-            break;
-        }
         break;
       case TPCCFunctionID::newOrder:
         parseNewOrder(data[i]);
@@ -162,14 +151,20 @@ inline void TPCCParser::parseOrderStatusName(const uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
-      parse32(params.orderStatusName.w_id, data);
+      // read strLength and zero char array
+      params.orderStatusName.strLength = data;
+      std::fill(&params.orderStatusName.c_last[0], &params.orderStatusName.c_last[16], 0);
       break;
     case 1:
-      parse32(params.orderStatusName.d_id, data);
+      parse32(params.orderStatusName.w_id, data);
       break;
     case 2:
+      parse32(params.orderStatusName.d_id, data);
+      break;
+    case 3:
+      // read char array
       params.orderStatusName.c_last[byteIndex - 1] = data;
-      if (byteIndex == params.orderStatusName.strSize) {
+      if (byteIndex == params.orderStatusName.strLength) {
         runTPCCFunction();
         setUpNewPaket();
       }
@@ -214,31 +209,37 @@ inline void TPCCParser::parsePaymentByName(const uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
-      parse32(params.paymentByName.w_id, data);
+      // read strLength and zero char array
+      params.paymentByName.strLength = data;
+      std::fill(&params.paymentByName.c_last[0], &params.paymentByName.c_last[16], 0);
       break;
     case 1:
-      parse32(params.paymentByName.d_id, data);
+      parse32(params.paymentByName.w_id, data);
       break;
     case 2:
-      parse32(params.paymentByName.c_w_id, data);
+      parse32(params.paymentByName.d_id, data);
       break;
     case 3:
-      parse32(params.paymentByName.c_d_id, data);
+      parse32(params.paymentByName.c_w_id, data);
       break;
     case 4:
+      parse32(params.paymentByName.c_d_id, data);
+      break;
+    case 5:
+      // read char array
       params.paymentByName.c_last[byteIndex - 1] = data;
-      if (byteIndex == params.paymentByName.strSize) {
+      if (byteIndex == params.paymentByName.strLength) {
         fieldIndex++;
         byteIndex = 0;
       }
       break;
-    case 5:
+    case 6:
       parse64(params.paymentByName.h_date, data);
       break;
-    case 6:
+    case 7:
       parse64(params.paymentByName.h_amount, data);
       break;
-    case 7:
+    case 8:
       parse64AndRun(params.paymentByName.datetime, data, [&]() {
         runTPCCFunction();
         setUpNewPaket();
