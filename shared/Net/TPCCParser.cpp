@@ -6,7 +6,7 @@
 
 namespace Net
 {
-void TPCCParser::parse(const uint8_t* data, const size_t length)
+void TPCCParser::parse(const uint8_t* data, size_t length)
 {
   size_t i = 0;
 
@@ -50,7 +50,7 @@ inline void TPCCParser::setUpNewPaket()
   funcID = TPCCFunctionID::notSet;
 }
 
-inline void TPCCParser::parseNewOrder(const uint8_t data)
+inline void TPCCParser::parseNewOrder(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -93,7 +93,7 @@ inline void TPCCParser::parseNewOrder(const uint8_t data)
   }
 }
 
-inline void TPCCParser::parseDelivery(const uint8_t data)
+inline void TPCCParser::parseDelivery(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -111,7 +111,7 @@ inline void TPCCParser::parseDelivery(const uint8_t data)
   }
 }
 
-inline void TPCCParser::parseStockLevel(const uint8_t data)
+inline void TPCCParser::parseStockLevel(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -129,7 +129,7 @@ inline void TPCCParser::parseStockLevel(const uint8_t data)
   }
 }
 
-inline void TPCCParser::parseOrderStatusId(const uint8_t data)
+inline void TPCCParser::parseOrderStatusId(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -147,7 +147,7 @@ inline void TPCCParser::parseOrderStatusId(const uint8_t data)
   }
 }
 
-inline void TPCCParser::parseOrderStatusName(const uint8_t data)
+inline void TPCCParser::parseOrderStatusName(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -172,7 +172,7 @@ inline void TPCCParser::parseOrderStatusName(const uint8_t data)
   }
 }
 
-inline void TPCCParser::parsePaymentById(const uint8_t data)
+inline void TPCCParser::parsePaymentById(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -205,7 +205,7 @@ inline void TPCCParser::parsePaymentById(const uint8_t data)
   }
 }
 
-inline void TPCCParser::parsePaymentByName(const uint8_t data)
+inline void TPCCParser::parsePaymentByName(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -248,7 +248,7 @@ inline void TPCCParser::parsePaymentByName(const uint8_t data)
   }
 }
 
-inline void TPCCParser::parse32(uint32_t& dest, const uint8_t data)
+inline void TPCCParser::parse32(uint32_t& dest, uint8_t data)
 {
   parse32AndRun(dest, data, [&]() {
     fieldIndex++;
@@ -256,7 +256,7 @@ inline void TPCCParser::parse32(uint32_t& dest, const uint8_t data)
   });
 }
 
-inline void TPCCParser::parse64(uint64_t& dest, const uint8_t data)
+inline void TPCCParser::parse64(uint64_t& dest, uint8_t data)
 {
   parse64AndRun(dest, data, [&]() {
     fieldIndex++;
@@ -264,7 +264,7 @@ inline void TPCCParser::parse64(uint64_t& dest, const uint8_t data)
   });
 }
 
-inline void TPCCParser::parseVecElement(int32_t& dest, const uint8_t data)
+inline void TPCCParser::parseVecElement(int32_t& dest, uint8_t data)
 {
   parse32AndRun(*reinterpret_cast<uint32_t*>(&dest), data, [&]() {
     vecIndex++;

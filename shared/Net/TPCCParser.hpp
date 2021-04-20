@@ -79,7 +79,7 @@ struct TPCCVectorParams {
 class TPCCParser : ProtocolParser
 {
  public:
-  void parse(const uint8_t* data, const size_t length);
+  void parse(const uint8_t* data, size_t length);
 
  private:
   size_t fieldIndex = 0;
@@ -93,20 +93,20 @@ class TPCCParser : ProtocolParser
 
   void setUpNewPaket();
 
-  void parseNewOrder(const uint8_t data);
-  void parseDelivery(const uint8_t data);
-  void parseStockLevel(const uint8_t data);
-  void parseOrderStatusId(const uint8_t data);
-  void parseOrderStatusName(const uint8_t data);
-  void parsePaymentById(const uint8_t data);
-  void parsePaymentByName(const uint8_t data);
+  void parseNewOrder(uint8_t data);
+  void parseDelivery(uint8_t data);
+  void parseStockLevel(uint8_t data);
+  void parseOrderStatusId(uint8_t data);
+  void parseOrderStatusName(uint8_t data);
+  void parsePaymentById(uint8_t data);
+  void parsePaymentByName(uint8_t data);
 
-  void parse32(uint32_t& dest, const uint8_t data);
-  void parse64(uint64_t& dest, const uint8_t data);
-  void parseVecElement(int32_t& dest, const uint8_t data);
+  void parse32(uint32_t& dest, uint8_t data);
+  void parse64(uint64_t& dest, uint8_t data);
+  void parseVecElement(int32_t& dest, uint8_t data);
 
   template <typename Func>
-  void parse32AndRun(uint32_t& dest, const uint8_t data, Func callback)
+  void parse32AndRun(uint32_t& dest, uint8_t data, Func callback)
   {
     switch (byteIndex) {
       case 1:
@@ -127,7 +127,7 @@ class TPCCParser : ProtocolParser
   }
 
   template <typename Func>
-  void parse64AndRun(uint64_t& dest, const uint8_t data, Func callBack)
+  void parse64AndRun(uint64_t& dest, uint8_t data, Func callBack)
   {
     switch (byteIndex) {
       case 1:
