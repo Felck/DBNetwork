@@ -15,8 +15,9 @@ class Server
  public:
   Server();
   ~Server();
-  void init(uint16_t port);
-  void run(int threadCount, size_t lineSize);
+  void init(uint16_t port, size_t bufferSize);
+  void run(int threadCount);
+  void runThread();
 
  private:
   struct Connection {
@@ -35,6 +36,7 @@ class Server
 
   int epfd;
   int listenfd;
+  size_t bufferSize;
   std::vector<std::thread> threads;
   pthread_rwlock_t connLatch;
   std::unordered_map<int, Connection> connections;

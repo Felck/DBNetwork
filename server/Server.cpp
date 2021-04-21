@@ -15,27 +15,6 @@ void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) 
   eventCounter++;
 }
 
-/*void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) const
-{
-  // write back msg
-  auto msg = Net::wrapMessage(&data[0], data.size());
-
-  if (connection.outBuffer.empty()) {
-    auto n = send(connection.fd, &msg[0], msg.size(), MSG_NOSIGNAL);
-    // TODO: handle errors
-
-    if (n != msg.size()) {
-      // buffer remaining part of msg
-      auto& buf = connection.outBuffer;
-      buf.insert(buf.begin(), msg.begin() + n, msg.end());
-      connection.epollEvents |= EPOLLOUT;
-    }
-  } else {
-    // buffer msg
-    connection.outBuffer.insert(connection.outBuffer.end(), msg.begin(), msg.end());
-  }
-}*/
-
 std::atomic<uint64_t> Server::eventCounter{0};
 
 Server::Server()
@@ -48,151 +27,156 @@ Server::~Server()
   pthread_rwlock_destroy(&connLatch);
 }
 
-void Server::run(int threadCount, size_t lineSize)
+void Server::run(int threadCount)
 {
   for (int t_i = 0; t_i < threadCount; t_i++) {
-    threads.emplace_back([&]() {
-      // main loop
-      struct epoll_event ev, events[1];
-      Connection* connection;
-
-      for (;;) {
-        // wait for epoll events
-        int nfds;
-        if ((nfds = epoll_wait(epfd, events, 1, -1)) == -1) {
-          perror("epoll_wait()");
-          exit(EXIT_FAILURE);
-        }
-
-        // handle events
-        for (int i = 0; i < nfds; ++i) {
-          ev = events[i];
-          if (ev.data.fd == listenfd) {
-            // new socket user detected, accept connection
-            struct sockaddr_in clientaddr;
-            socklen_t clilen = sizeof(clientaddr);
-            int connfd = accept(listenfd, (struct sockaddr*)&clientaddr, &clilen);
-            if (connfd == -1) {
-              if (errno = EAGAIN || errno == EWOULDBLOCK)
-                continue;
-
-              perror("accept()");
-              exit(EXIT_FAILURE);
-            }
-
-            // add connection to hashtable and epoll
-            pthread_rwlock_wrlock(&connLatch);
-            connections.try_emplace(connfd, connfd);
-            pthread_rwlock_unlock(&connLatch);
-
-            setNonBlocking(connfd);
-            ev.data.fd = connfd;
-            ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-            if (epoll_ctl(epfd, EPOLL_CTL_ADD, connfd, &ev) == -1) {
-              perror("epoll_ctl()");
-              exit(EXIT_FAILURE);
-            }
-          } else if ((ev.events & EPOLLERR) || (ev.events & EPOLLHUP)) {
-            // client closed connection
-            closeConnection(ev.data.fd);
-          } else {
-            if (ev.events & EPOLLOUT) {
-              // write from outBuffer
-              pthread_rwlock_rdlock(&connLatch);
-              connection = &connections.at(ev.data.fd);
-              pthread_rwlock_unlock(&connLatch);
-              auto& buf = connection->outBuffer;
-
-              for (;;) {
-                auto n = send(ev.data.fd, &buf[0], buf.size(), MSG_NOSIGNAL);
-                if (n == -1) {
-                  if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    // socket buffer full
-                    break;
-                  } else if (errno == ECONNRESET) {
-                    // client closed connection
-                    closeConnection(ev.data.fd);
-                    goto continue_event_loop;
-                  } else {
-                    perror("send()");
-                    exit(EXIT_FAILURE);
-                  }
-                } else if (n != buf.size()) {
-                  // there's still some of the message left
-                  buf.erase(buf.begin(), buf.begin() + n);
-                  connection->epollEvents |= EPOLLOUT;
-                } else {
-                  // complete message has been sent
-                  buf.clear();
-                  connection->epollEvents &= ~EPOLLOUT;
-                  break;
-                }
-              }
-            }
-
-            if (ev.events & EPOLLIN) {
-              pthread_rwlock_rdlock(&connLatch);
-              connection = &connections.at(ev.data.fd);
-              pthread_rwlock_unlock(&connLatch);
-
-              // read all data from socket until EAGAIN
-              char line[lineSize];
-              for (;;) {
-                ssize_t n = read(ev.data.fd, line, lineSize);
-                if (n == -1) {
-                  if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    // all data read
-                    break;
-                  } else if (errno == ECONNRESET) {
-                    // client closed connection
-                    closeConnection(ev.data.fd);
-                    // continue with the event loop
-                    goto continue_event_loop;
-                  } else {
-                    perror("read()");
-                    exit(EXIT_FAILURE);
-                  }
-                } else if (n == 0) {
-                  // client closed connection
-                  closeConnection(ev.data.fd);
-                  // continue with the event loop
-                  goto continue_event_loop;
-                } else {
-                  // forward line to packet protocol handler
-                  connection->packetizer.receive(reinterpret_cast<const uint8_t*>(line), n);
-                }
-              }
-            }
-
-            // rearm socket
-            ev.events = connection->epollEvents;
-            if (epoll_ctl(epfd, EPOLL_CTL_MOD, ev.data.fd, &ev) == -1) {
-              perror("epoll_ctl()");
-              exit(EXIT_FAILURE);
-            }
-          }
-
-        continue_event_loop:;
-        }
-      }
-    });
+    threads.emplace_back(&Server::runThread, this);
   }
 
-  sleep(5000);
-
+  // benchmark
   for (;;) {
     auto startTime = std::chrono::high_resolution_clock::now();
     eventCounter = 0;
     std::this_thread::sleep_for(std::chrono::seconds(5));
     uint64_t events = eventCounter;
     std::chrono::duration<double, std::milli> mSec = std::chrono::high_resolution_clock::now() - startTime;
-    std::cout << events << " " << mSec.count() << " " << events*1000/mSec.count() << "\n";
+    std::cout << events << " " << mSec.count() << " " << events * 1000 / mSec.count() << "\n";
+  }
+}
+
+void Server::runThread()
+{
+  // main loop
+  struct epoll_event ev, events[1];
+  Connection* connection;
+
+  for (;;) {
+    // wait for epoll events
+    int nfds;
+    if ((nfds = epoll_wait(epfd, events, 1, -1)) == -1) {
+      perror("epoll_wait()");
+      exit(EXIT_FAILURE);
+    }
+
+    // event loop
+    for (int i = 0; i < nfds; ++i) {
+      ev = events[i];
+      if (ev.data.fd == listenfd) {
+        // new socket user detected, accept connection
+        struct sockaddr_in clientaddr;
+        socklen_t clilen = sizeof(clientaddr);
+        int connfd = accept(listenfd, (struct sockaddr*)&clientaddr, &clilen);
+        if (connfd == -1) {
+          if (errno = EAGAIN || errno == EWOULDBLOCK)
+            continue;
+
+          perror("accept()");
+          exit(EXIT_FAILURE);
+        }
+
+        // add connection to hashtable and epoll
+        pthread_rwlock_wrlock(&connLatch);
+        connections.try_emplace(connfd, connfd);
+        pthread_rwlock_unlock(&connLatch);
+
+        setNonBlocking(connfd);
+        ev.data.fd = connfd;
+        ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+        if (epoll_ctl(epfd, EPOLL_CTL_ADD, connfd, &ev) == -1) {
+          perror("epoll_ctl()");
+          exit(EXIT_FAILURE);
+        }
+      } else if ((ev.events & EPOLLERR) || (ev.events & EPOLLHUP)) {
+        // client closed connection
+        closeConnection(ev.data.fd);
+      } else {
+        if (ev.events & EPOLLOUT) {
+          // write from outBuffer
+          pthread_rwlock_rdlock(&connLatch);
+          connection = &connections.at(ev.data.fd);
+          pthread_rwlock_unlock(&connLatch);
+          auto& buf = connection->outBuffer;
+
+          for (;;) {
+            auto n = send(ev.data.fd, &buf[0], buf.size(), MSG_NOSIGNAL);
+            if (n == -1) {
+              if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // socket buffer full
+                break;
+              } else if (errno == ECONNRESET) {
+                // client closed connection
+                closeConnection(ev.data.fd);
+                // continue with the event loop
+                goto continue_event_loop;
+              } else {
+                perror("send()");
+                exit(EXIT_FAILURE);
+              }
+            } else if (n != buf.size()) {
+              // there's still some of the message left
+              buf.erase(buf.begin(), buf.begin() + n);
+              connection->epollEvents |= EPOLLOUT;
+            } else {
+              // complete message has been sent
+              buf.clear();
+              connection->epollEvents &= ~EPOLLOUT;
+              break;
+            }
+          }
+        }
+
+        if (ev.events & EPOLLIN) {
+          pthread_rwlock_rdlock(&connLatch);
+          connection = &connections.at(ev.data.fd);
+          pthread_rwlock_unlock(&connLatch);
+
+          // read all data from socket until EAGAIN
+          char buf[bufferSize];
+          for (;;) {
+            ssize_t n = read(ev.data.fd, buf, bufferSize);
+            if (n == -1) {
+              if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // all data read
+                break;
+              } else if (errno == ECONNRESET) {
+                // client closed connection
+                closeConnection(ev.data.fd);
+                // continue with the event loop
+                goto continue_event_loop;
+              } else {
+                perror("read()");
+                exit(EXIT_FAILURE);
+              }
+            } else if (n == 0) {
+              // client closed connection
+              closeConnection(ev.data.fd);
+              // continue with the event loop
+              goto continue_event_loop;
+            } else {
+              // forward buf to packet protocol handler
+              connection->packetizer.receive(reinterpret_cast<const uint8_t*>(buf), n);
+            }
+          }
+        }
+
+        // rearm socket
+        ev.events = connection->epollEvents;
+        if (epoll_ctl(epfd, EPOLL_CTL_MOD, ev.data.fd, &ev) == -1) {
+          perror("epoll_ctl()");
+          exit(EXIT_FAILURE);
+        }
+      }
+
+    continue_event_loop:;
+    }
   }
 }
 
 // init epoll and listening socket
-void Server::init(uint16_t port)
+void Server::init(uint16_t port, size_t bufferSize)
 {
+  this->bufferSize = bufferSize;
+
   // epoll instance
   if ((epfd = epoll_create(256)) == -1) {
     perror("epoll_create()");
@@ -207,10 +191,7 @@ void Server::init(uint16_t port)
   setNonBlocking(listenfd);
 
   // allow immediate address reuse on restart
-  /** FIXME:
-   * Packets from the previous run could still be received and need to be ignored.
-   * The packet framing protocol might be the best choice for this.
-   */
+  // NOTE: tcp pakets from a previous run could still be pending
   int enable = 1;
   if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1) {
     perror("setsockopt()");
