@@ -10,7 +10,7 @@
 #include <string>
 #include <thread>
 
-#include "PacketProtocol.hpp"
+#include "workload.hpp"
 
 constexpr auto USE_POISSON = false;
 constexpr auto POISSON_LAMBDA = 3.5;
@@ -27,11 +27,10 @@ struct ThreadData {
 
 void writeMessage(int fd, std::vector<uint8_t>& msg)
 {
-  auto packet = Net::wrapMessage(msg.data(), msg.size());
   size_t written = 0;
   size_t n;
-  while (written != packet.size()) {
-    if ((n = write(fd, &packet[0] + written, packet.size() - written)) < 0) {
+  while (written != msg.size()) {
+    if ((n = write(fd, &msg[0] + written, msg.size() - written)) < 0) {
       perror("write()");
       exit(EXIT_FAILURE);
     } else {
@@ -58,35 +57,9 @@ void runThread(ThreadData& thread_data)
   std::default_random_engine generator;
   std::exponential_distribution<double> distribution(POISSON_LAMBDA);
   std::atomic<int> packets_pending{0};
+  std::vector<uint8_t> buf;
 
-/*  std::thread reading_thread([&]() {
-    uint8_t buf[std::max(thread_data.message->size() + 8, 8192ul)];  // at least 8kb read buffer
-    uint64_t local_ev_count = 0;
-
-    Net::PacketProtocol packetizer([&](auto& data) {
-      packets_pending--;
-      // count events
-      if (thread_data.count_events)
-        local_ev_count++;
-    });
-
-    while (thread_data.keep_running) {
-      // wait for data and read in
-      int n = recv(sockfd, buf, sizeof(buf), MSG_DONTWAIT);
-      if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-          pthread_yield();
-        } else {
-          perror("read()");
-          exit(EXIT_FAILURE);
-        }
-      } else {
-        packetizer.receive(buf, n);
-      }
-    }
-
-    thread_data.event_count += local_ev_count;
-  });*/
+  std::cout << std::hex;
 
   // main loop
   while (thread_data.keep_running) {
@@ -95,9 +68,11 @@ void runThread(ThreadData& thread_data)
     while (packets_pending > 100 && thread_data.keep_running) {
       pthread_yield();
     }
-*/
-    writeMessage(sockfd, *thread_data.message);
-//    packets_pending++;
+    */
+    TPCC::tx(buf, 0);
+    writeMessage(sockfd, buf);
+    buf.clear();
+    //    packets_pending++;
 
     // wait for an exponential distributed amount of time (poisson process)
     if (USE_POISSON) {
@@ -106,7 +81,6 @@ void runThread(ThreadData& thread_data)
     }
   }
 
-//  reading_thread.join();
   close(sockfd);
 }
 
@@ -141,11 +115,11 @@ int main(int argc, char* argv[])
     threads.emplace_back(runThread, std::ref(thread_data));
   }
 
-  for(;;) {
+  for (;;) {
     sleep(10000);
   }
 
-/*
+  /*
   sleep(SETUP_TIME);
   // start counting events
   thread_data.count_events = true;
@@ -160,6 +134,6 @@ int main(int argc, char* argv[])
   std::cout << "events\tseconds\tevents/s\tms/event\n"
             << thread_data.event_count << "\t" << run_seconds << "\t" << (thread_data.event_count * 1.0) / run_seconds << "\t"
             << (run_seconds * 1000.0) / thread_data.event_count << "\t" << std::endl;
-*/
+  */
   return 0;
 }

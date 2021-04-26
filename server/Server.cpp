@@ -8,14 +8,12 @@
 #include <iostream>
 #include <string>
 
-Server::Connection::Connection(int fd) : fd(fd), packetizer(MessageHandler{*this}) {}
+Server::Connection::Connection(int fd) : fd(fd) {}
 
-void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) const
+/*void Server::Connection::MessageHandler::operator()(std::vector<uint8_t>& data) const
 {
   eventCounter++;
-}
-
-std::atomic<uint64_t> Server::eventCounter{0};
+}*/
 
 Server::Server()
 {
@@ -36,9 +34,9 @@ void Server::run(int threadCount)
   // benchmark
   for (;;) {
     auto startTime = std::chrono::high_resolution_clock::now();
-    eventCounter = 0;
+    TPCC::eventCounter = 0;
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    uint64_t events = eventCounter;
+    uint64_t events = TPCC::eventCounter;
     std::chrono::duration<double, std::milli> mSec = std::chrono::high_resolution_clock::now() - startTime;
     std::cout << events << " " << mSec.count() << " " << events * 1000 / mSec.count() << "\n";
   }
@@ -154,7 +152,8 @@ void Server::runThread()
               goto continue_event_loop;
             } else {
               // forward buf to packet protocol handler
-              connection->packetizer.receive(reinterpret_cast<const uint8_t*>(buf), n);
+              //              connection->packetizer.receive(reinterpret_cast<const uint8_t*>(buf), n);
+              connection->parser.parse(reinterpret_cast<uint8_t*>(buf), n);
             }
           }
         }

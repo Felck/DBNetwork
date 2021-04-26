@@ -1,12 +1,11 @@
 #pragma once
 #include <sys/epoll.h>
 
-#include <atomic>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
-#include "PacketProtocol.hpp"
+#include "TPCCParser.hpp"
 
 inline constexpr int LISTEN_QUEUE_SIZE = 20;
 
@@ -21,16 +20,16 @@ class Server
 
  private:
   struct Connection {
-    struct MessageHandler {
-      Connection& connection;
-      void operator()(std::vector<uint8_t>& data) const;
-    };
+    /*    struct MessageHandler {
+          Connection& connection;
+          void operator()(std::vector<uint8_t>& data) const;
+        };*/
 
     Connection(int fd);
 
     int fd;
     uint32_t epollEvents = EPOLLIN | EPOLLET | EPOLLONESHOT;
-    Net::PacketProtocol<MessageHandler> packetizer;
+    TPCC::Parser parser;
     std::vector<uint8_t> outBuffer;
   };
 
@@ -40,8 +39,6 @@ class Server
   std::vector<std::thread> threads;
   pthread_rwlock_t connLatch;
   std::unordered_map<int, Connection> connections;
-
-  static std::atomic<uint64_t> eventCounter;
 
   void setNonBlocking(int socket);
   void closeConnection(int fd);

@@ -1,59 +1,59 @@
 #include "TPCCParser.hpp"
 
-#include <endian.h>
-
-#include <algorithm>
-
-namespace Net
+namespace TPCC
 {
-void TPCCParser::parse(const uint8_t* data, size_t length)
+std::atomic<uint64_t> eventCounter = 0;
+
+void Parser::parse(const uint8_t* data, size_t length)
 {
   size_t i = 0;
 
   while (i != length) {
     switch (funcID) {
-      case TPCCFunctionID::notSet:
+      case FunctionID::notSet:
         // new paket: read function ID
-        funcID = static_cast<TPCCFunctionID>(data[0]);
+        funcID = static_cast<FunctionID>(data[i]);
+        byteIndex = 0;
         break;
-      case TPCCFunctionID::newOrder:
+      case FunctionID::newOrder:
         parseNewOrder(data[i]);
         break;
-      case TPCCFunctionID::delivery:
+      case FunctionID::delivery:
         parseDelivery(data[i]);
         break;
-      case TPCCFunctionID::stockLevel:
+      case FunctionID::stockLevel:
         parseStockLevel(data[i]);
         break;
-      case TPCCFunctionID::orderStatusId:
+      case FunctionID::orderStatusId:
         parseOrderStatusId(data[i]);
         break;
-      case TPCCFunctionID::orderStatusName:
+      case FunctionID::orderStatusName:
         parseOrderStatusName(data[i]);
         break;
-      case TPCCFunctionID::paymentById:
+      case FunctionID::paymentById:
         parsePaymentById(data[i]);
         break;
-      case TPCCFunctionID::paymentByName:
+      case FunctionID::paymentByName:
         parsePaymentByName(data[i]);
         break;
     }
+    byteIndex++;
+    i++;
   }
-  byteIndex++;
-  i++;
 }
 
-inline void TPCCParser::setUpNewPaket()
+inline void Parser::setUpNewPaket()
 {
   fieldIndex = 0;
   byteIndex = 0;
-  funcID = TPCCFunctionID::notSet;
+  funcID = FunctionID::notSet;
 }
 
-inline void TPCCParser::parseNewOrder(uint8_t data)
+inline void Parser::parseNewOrder(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
+      // read vector lengths and resize
       params.newOrder.vecSize = data;
       vParams.lineNumbers.resize(data);
       vParams.supwares.resize(data);
@@ -93,7 +93,7 @@ inline void TPCCParser::parseNewOrder(uint8_t data)
   }
 }
 
-inline void TPCCParser::parseDelivery(uint8_t data)
+inline void Parser::parseDelivery(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -111,7 +111,7 @@ inline void TPCCParser::parseDelivery(uint8_t data)
   }
 }
 
-inline void TPCCParser::parseStockLevel(uint8_t data)
+inline void Parser::parseStockLevel(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -129,7 +129,7 @@ inline void TPCCParser::parseStockLevel(uint8_t data)
   }
 }
 
-inline void TPCCParser::parseOrderStatusId(uint8_t data)
+inline void Parser::parseOrderStatusId(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -147,13 +147,15 @@ inline void TPCCParser::parseOrderStatusId(uint8_t data)
   }
 }
 
-inline void TPCCParser::parseOrderStatusName(uint8_t data)
+inline void Parser::parseOrderStatusName(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
       // read strLength and zero char array
       params.orderStatusName.strLength = data;
       std::fill(&params.orderStatusName.c_last[0], &params.orderStatusName.c_last[16], 0);
+      fieldIndex++;
+      byteIndex = 0;
       break;
     case 1:
       parse32(params.orderStatusName.w_id, data);
@@ -172,7 +174,7 @@ inline void TPCCParser::parseOrderStatusName(uint8_t data)
   }
 }
 
-inline void TPCCParser::parsePaymentById(uint8_t data)
+inline void Parser::parsePaymentById(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
@@ -205,13 +207,15 @@ inline void TPCCParser::parsePaymentById(uint8_t data)
   }
 }
 
-inline void TPCCParser::parsePaymentByName(uint8_t data)
+inline void Parser::parsePaymentByName(uint8_t data)
 {
   switch (fieldIndex) {
     case 0:
       // read strLength and zero char array
       params.paymentByName.strLength = data;
       std::fill(&params.paymentByName.c_last[0], &params.paymentByName.c_last[16], 0);
+      fieldIndex++;
+      byteIndex = 0;
       break;
     case 1:
       parse32(params.paymentByName.w_id, data);
@@ -248,7 +252,7 @@ inline void TPCCParser::parsePaymentByName(uint8_t data)
   }
 }
 
-inline void TPCCParser::parse32(uint32_t& dest, uint8_t data)
+inline void Parser::parse32(uint32_t& dest, uint8_t data)
 {
   parse32AndRun(dest, data, [&]() {
     fieldIndex++;
@@ -256,7 +260,7 @@ inline void TPCCParser::parse32(uint32_t& dest, uint8_t data)
   });
 }
 
-inline void TPCCParser::parse64(uint64_t& dest, uint8_t data)
+inline void Parser::parse64(uint64_t& dest, uint8_t data)
 {
   parse64AndRun(dest, data, [&]() {
     fieldIndex++;
@@ -264,15 +268,15 @@ inline void TPCCParser::parse64(uint64_t& dest, uint8_t data)
   });
 }
 
-inline void TPCCParser::parseVecElement(int32_t& dest, uint8_t data)
+inline void Parser::parseVecElement(int32_t& dest, uint8_t data)
 {
   parse32AndRun(*reinterpret_cast<uint32_t*>(&dest), data, [&]() {
     vecIndex++;
     byteIndex = 0;
     if (vecIndex == params.newOrder.vecSize) {
-      vecIndex == 0;
+      vecIndex = 0;
       fieldIndex++;
     }
   });
 }
-}  // namespace Net
+}  // namespace TPCC

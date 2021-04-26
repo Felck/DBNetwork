@@ -1,12 +1,16 @@
 #pragma once
+#include <endian.h>
+
+#include <atomic>
 #include <vector>
 
 #include "ProtocolParser.hpp"
-#include "endian.h"
 
-namespace Net
+namespace TPCC
 {
-enum class TPCCFunctionID : uint8_t {
+extern std::atomic<uint64_t> eventCounter;
+
+enum class FunctionID : uint8_t {
   notSet = 0,
   newOrder = 1,
   delivery = 2,
@@ -17,7 +21,7 @@ enum class TPCCFunctionID : uint8_t {
   paymentByName = 7
 };
 
-union TPCCFunctionParams {
+union FunctionParams {
   struct NewOrder {
     uint64_t timestamp;
     uint32_t w_id;
@@ -69,14 +73,14 @@ union TPCCFunctionParams {
   } paymentByName;
 };
 
-struct TPCCVectorParams {
+struct VectorParams {
   std::vector<int32_t> lineNumbers;
   std::vector<int32_t> supwares;
   std::vector<int32_t> itemids;
   std::vector<int32_t> qtys;
 };
 
-class TPCCParser : ProtocolParser
+class Parser : Net::ProtocolParser
 {
  public:
   void parse(const uint8_t* data, size_t length);
@@ -85,11 +89,11 @@ class TPCCParser : ProtocolParser
   size_t fieldIndex = 0;
   size_t vecIndex = 0;
   size_t byteIndex = 0;
-  TPCCFunctionID funcID;
-  TPCCFunctionParams params;
-  TPCCVectorParams vParams;
+  FunctionID funcID = FunctionID::notSet;
+  FunctionParams params;
+  VectorParams vParams;
 
-  void runTPCCFunction() {}  // TODO tpcc function calls
+  void runTPCCFunction() { eventCounter++; }  // TODO tpcc function calls
 
   void setUpNewPaket();
 
@@ -120,9 +124,10 @@ class TPCCParser : ProtocolParser
         break;
       case 4:
         dest |= static_cast<uint32_t>(data);
-        dest = be32toh(dest);
         callback();
         break;
+      default:
+        throw "byte index out of range";
     }
   }
 
@@ -153,10 +158,11 @@ class TPCCParser : ProtocolParser
         break;
       case 8:
         dest |= static_cast<uint64_t>(data);
-        dest = be64toh(dest);
         callBack();
         break;
+      default:
+        throw "byte index out of range";
     }
   }
 };
-}  // namespace Net
+}  // namespace TPCC

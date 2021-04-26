@@ -103,6 +103,7 @@ void serializePaymentById(std::vector<uint8_t>& buf,
   push32s(buf, d_id);
   push32s(buf, c_w_id);
   push32s(buf, c_d_id);
+  push32s(buf, c_id);
   push64(buf, h_date);
   push64(buf, bit_cast<uint64_t>(h_amount));
   push64(buf, datetime);
