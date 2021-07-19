@@ -28,7 +28,7 @@ struct ThreadData {
 void writeMessage(int fd, std::vector<uint8_t>& msg)
 {
   size_t written = 0;
-  size_t n;
+  ssize_t n;
   while (written != msg.size()) {
     if ((n = write(fd, &msg[0] + written, msg.size() - written)) < 0) {
       perror("write()");
